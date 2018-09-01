@@ -1,4 +1,5 @@
 #include <PID_v1.h>
+#include "TimerOne.h"
 
 int Left_motor_back = 9; 
 int Left_motor_go = 5; 
@@ -31,11 +32,17 @@ unsigned long m2_t0;
 double m2_I = 0;
 double m2_P0 = 0;
 
-double sollWert = 120;
+double sollWert = 0;
 
-PID m1PID(&sensor1istWertCPM, &m1_controllVariable, &sollWert,2,1,0.1, DIRECT);
+
+volatile unsigned long t_start = micros();
+
+int currentSpeed = 0;
+
+//PID m1PID(&sensor1istWertCPM, &m1_controllVariable, &sollWert,0.8,0.3,0.01, DIRECT);
 PID m2PID(&sensor2istWertCPM, &m2_controllVariable, &sollWert,2,1,0.1, DIRECT);
-
+volatile unsigned long pulseCounter = 0;
+unsigned long oldCounter = 0;
 void setup()
 {
   //Initialize motor drive for output mode
@@ -46,13 +53,30 @@ void setup()
   Serial.begin(9600);
   while (! Serial);
    Serial.println("Start");
-   digitalWrite(Right_motor_go,HIGH);// right motor go ahead
-  digitalWrite(Right_motor_back,LOW);  
+   
+   //digitalWrite(Right_motor_go,HIGH);// right motor go ahead
+  //digitalWrite(Right_motor_back,LOW);  
  
-  m1PID.SetMode(AUTOMATIC);
-  m1PID.SetSampleTime(10);
+  //m1PID.SetMode(AUTOMATIC);
+  //m1PID.SetSampleTime(10);
   m2PID.SetMode(AUTOMATIC);
   m2PID.SetSampleTime(10);
+
+  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
+  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
+  run(m1, 0);
+}
+
+void resetPulseInt() {
+  Timer1.detachInterrupt();
+  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
+}
+
+void pulse() {
+  pulseCounter++;
+  Timer1.initialize(1 * 100);
+  Timer1.attachInterrupt(resetPulseInt);
+  detachInterrupt(digitalPinToInterrupt(2));
 }
 
 void run(int motor, int myspeed) // go ahead 
@@ -121,46 +145,53 @@ void updateController(unsigned long now, double sollWert, double istWert, double
 
 
 
+const int row = 10;
 
-
-
-
+double data_now[row*10];
+double data_ist[row*10];
+double data_stell[row*10];
+int i = 0;
 void loop() { 
+  
   unsigned long now = millis(); 
   
-  calcIstWert(Sensor1, now, sensor1StartTime, sensor1State, sensor1istWertCPM);
-  calcIstWert(Sensor2, now, sensor2StartTime, sensor2State, sensor2istWertCPM);
-  m1PID.Compute();
-  m2PID.Compute();
+  //calcIstWert(Sensor1, now, sensor1StartTime, sensor1State, sensor1istWertCPM);
+  //calcIstWert(Sensor2, now, sensor2StartTime, sensor2State, sensor2istWertCPM);
+  //m1PID.Compute();
+  //m2PID.Compute();
   
-  //updateController(now, sollWert, sensor1istWertCPM, 0.2, 0.01, 0.006, m1_t0, m1_I, m1_P0, m1_controllVariable);
+  updateController(now, sollWert, m1_currentSpeed, 0.2, 0.01, 0.05, m1_t0, m1_I, m1_P0, m1_controllVariable);
 
 
   
-  //updateController(now, 120, sensor1istWertCPM, 0.2, 0.01, 0.006, m2_t0, m2_I, m2_P0, m2_controllVariable);
+  updateController(now, sollWert, m2_currentSpeed, 0.2, 0.01, 0.006, m2_t0, m2_I, m2_P0, m2_controllVariable);
   run(m1, m1_controllVariable);   
   run(m2, m2_controllVariable);   
    
-   if (now > t0 + 1000) {
-      Serial.print(sollWert);
-      Serial.print(";   ");
-      Serial.print(sensor1istWertCPM);
-      Serial.print(";");
-      Serial.print(m1_controllVariable);
-      Serial.print(";      ");
-      Serial.print(sensor2istWertCPM);
-      Serial.print(";");
-      Serial.print(m2_controllVariable);
-      Serial.print(";");
-      Serial.println("");
-      
-      t0 = now;
+   if (now > t0 + 200) {
+        unsigned long currentCounter = pulseCounter;
+        currentSpeed = (currentCounter - oldCounter) ;
+        oldCounter = currentCounter;
+//      data_now[i] = now;
+//      data_ist[i] = sensor1istWertCPM;
+//      data_stell[i] = m1_controllVariable;
+        t0 = now;
+//      i++;
     } 
 
-//  if (now > t1 + 10000) {
-//    sollWert+=10;
-//    t1 = now;
-//  }
+  if (now > t1 + 1000) {
+    Serial.println(currentSpeed);
+    
+//    for (int j=0;j<row*10;j++){
+//      Serial.print(data_now[j]);
+//      Serial.print(";");
+//      Serial.println(data_ist[j]);
+//      
+//      i = 0;
+    
+    
+    t1 = now;
+  }
 }
 
 
