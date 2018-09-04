@@ -1,5 +1,8 @@
 #include <PID_v1.h>
 #include "TimerOne.h"
+#include <SD.h>
+
+const int chipSelect = 10;
 
 int Left_motor_back = 9; 
 int Left_motor_go = 5; 
@@ -58,8 +61,8 @@ int i = 0;
 int driveState = 0;
 
 const int STOP_SPEED = 0;
-const int NORMAL_SPEED = 100;
-const int TURN_SPEED = 100;
+const int NORMAL_SPEED = 60;
+const int TURN_SPEED = 60;
 
 void setup()
 {
@@ -77,7 +80,12 @@ void setup()
   Serial.begin(9600);
   while (! Serial);
    Serial.println("setup");
-   
+//   if (!SD.begin(chipSelect)) {
+//    Serial.println("Card failed, or not present");
+//    // don't do anything more:
+//    return;
+//  }
+//  Serial.println("card initialized.");
    //digitalWrite(Right_motor_go,HIGH);// right motor go ahead
   //digitalWrite(Right_motor_back,LOW);  
  
@@ -88,6 +96,10 @@ void setup()
 
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
+
+  digitalWrite(Left_motor_go,HIGH);
+  digitalWrite(Left_motor_back,LOW);
+  analogWrite(Left_motor_go, 0);
 }
 
 //void resetPulseInt() {
@@ -103,13 +115,11 @@ void setup()
 //}
 
 void forwardM1(int myspeed) {
-  digitalWrite(Right_motor_go,HIGH);
   digitalWrite(Right_motor_back,LOW);  
   analogWrite(Right_motor_go, myspeed);
 }
 
 void forwardM2(int myspeed) {
-  digitalWrite(Left_motor_go,HIGH);
   digitalWrite(Left_motor_back,LOW);  
   analogWrite(Left_motor_go, myspeed);
 }
@@ -184,6 +194,16 @@ void updateController(unsigned long now, double sollWert, double istWert, double
 unsigned long m1_pulses_0=0;
 unsigned long m2_pulses_0=0;
 
+unsigned long t_speed_0=0;
+unsigned long m1_speed=0;
+unsigned long m1_speed_0=0;
+unsigned long m2_speed=0;
+unsigned long m2_speed_0=0;
+
+const int SPEED_TIMEFRAME=200;
+
+int m1_desiredSpeed = 0;
+int m2_desiredSpeed = 0;
 
 void loop() { 
   bool m1_ready = false;
@@ -192,16 +212,45 @@ void loop() {
   unsigned long now = millis(); 
   
   countPulses(Sensor1, now, sensor1State, m1_pulses);
-  countPulses(Sensor2, now, sensor2State, m2_pulses);
- 
+    countPulses(Sensor2, now, sensor2State, m2_pulses);
+
+  updateController(now, m1_desiredSpeed, m1_speed, 0.4, 1.0, 0.01, m1_t0, m1_I, m1_P0, m1_controllVariable);
+  forwardM1(m1_controllVariable);
+
+  
+  updateController(now, m2_desiredSpeed, m2_speed, 0.4, 1.0, 0.01, m2_t0, m2_I, m2_P0, m2_controllVariable);
+  forwardM2(m2_controllVariable);
+
+  if (now > t_speed_0 + SPEED_TIMEFRAME) {
+    m1_speed = (m1_pulses - m1_speed_0) * 1000/SPEED_TIMEFRAME;
+    m2_speed = (m2_pulses - m2_speed_0) * 1000/SPEED_TIMEFRAME;
+    t_speed_0 = now;
+    m1_speed_0 = m1_pulses;
+    m2_speed_0 = m2_pulses;
+  }
 
   if (now > t1 + 1000) {
-    Serial.print(driveState);
-    Serial.print(": ( ");
-    Serial.print(m1_pulses);
-    Serial.print(" ) - ( ");
-    Serial.print(m2_pulses);
-    Serial.println(" )");
+    String dataString = String(now);
+    dataString += ";";
+    dataString += String(m1_desiredSpeed);
+    dataString += ";";
+    dataString += String(m1_speed);
+    dataString += ";";
+    dataString += String(m1_controllVariable);
+    dataString += ";";
+    dataString += String(m2_desiredSpeed);
+    dataString += ";";
+    dataString += String(m2_speed);
+    dataString += ";";
+    dataString += String(m2_controllVariable);
+//    File dataFile = SD.open("datalog.txt", FILE_WRITE);
+//    if (dataFile) {
+//      dataFile.println(dataString);
+//      dataFile.close();
+//    } else {
+//      Serial.println("error opening controller.csv");
+//    }
+    Serial.println(dataString);
     t1 = now;
   }
 
@@ -221,40 +270,40 @@ void loop() {
       if (now > t0 + 2000) {
         Serial.print(driveState);
         Serial.println(": go forward");
-        forwardM1(NORMAL_SPEED);
-        forwardM2(NORMAL_SPEED);
+        m1_desiredSpeed = NORMAL_SPEED;
+        m2_desiredSpeed = NORMAL_SPEED;
         t0 = now;
         driveState = 2;
       }
       break;
     case 2: 
-      if (m1_pulses > m1_pulses_0 + 80) {
+      if (m1_pulses > m1_pulses_0 + 300) {
         Serial.print(driveState);
         Serial.println(": stop m1");
-        forwardM1(STOP_SPEED);  
+        m1_desiredSpeed = STOP_SPEED;
         driveState=3;
-      } else if (m2_pulses > m2_pulses_0 + 80) {
+      } else if (m2_pulses > m2_pulses_0 + 300) {
         Serial.print(driveState);
         Serial.println(": stop m2");
-        forwardM2(STOP_SPEED);   
+        m2_desiredSpeed = STOP_SPEED;
         driveState=4;
       }
       break;
     case 3: 
-      if (m2_pulses > m2_pulses_0 + 80) {
+      if (m2_pulses > m2_pulses_0 + 300) {
         Serial.print(driveState);
         Serial.println(": stop m2");
-        forwardM2(STOP_SPEED);   
+        m2_desiredSpeed = STOP_SPEED;
         driveState=0;
         m1_pulses_0 = m1_pulses;
         m2_pulses_0 = m2_pulses;
       }
       break;  
     case 4: 
-      if (m1_pulses > m1_pulses_0 + 80) {
+      if (m1_pulses > m1_pulses_0 + 300) {
         Serial.print(driveState);
         Serial.println(": stop m1");
-        forwardM1(STOP_SPEED);   
+        m1_desiredSpeed = STOP_SPEED;
         driveState=0;
         m1_pulses_0 = m1_pulses;
         m2_pulses_0 = m2_pulses;
