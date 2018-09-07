@@ -1,8 +1,7 @@
 #include <PID_v1.h>
+
 #include "TimerOne.h"
 #include <SD.h>
-
-const int chipSelect = 10;
 
 int Left_motor_back = 9; 
 int Left_motor_go = 5; 
@@ -15,13 +14,27 @@ int Sensor2 = 12;
 int m2 = 5; // Links
 int m1 = 6;  // Rechts
 int key = 4;
-int beep=3; 
 
-//unsigned long sensor1StartTime = 0;
+unsigned long m1_pulses_0=0;
+unsigned long m2_pulses_0=0;
+
+unsigned long t_speed_0=0;
+double m1_speed=0;
+unsigned long m1_speed_0=0;
+double m2_speed=0;
+unsigned long m2_speed_0=0;
+
+const int SPEED_TIMEFRAME=200;
+
+double m1_desiredSpeed = 0;
+double m2_desiredSpeed = 0;
+
+
+
 double m1_pulses = 0;
 int sensor1State = 0;
 
-//unsigned long sensor2StartTime = 0;
+
 double m2_pulses = 0;
 int sensor2State = 0;
 
@@ -37,49 +50,41 @@ unsigned long m2_t0;
 double m2_I = 0;
 double m2_P0 = 0;
 
-double sollWert = 0;
+//PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,1,3,0.1, DIRECT);
+//PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,1,3,0.1, DIRECT);
 
-
-volatile unsigned long t_start = micros();
-
-int currentSpeed = 0;
-
-//PID m1PID(&sensor1istWertCPM, &m1_controllVariable, &sollWert,0.8,0.3,0.01, DIRECT);
-//PID m2PID(&sensor2istWertCPM, &m2_controllVariable, &sollWert,2,1,0.1, DIRECT);
-
-volatile unsigned long pulseCounter = 0;
-unsigned long oldCounter = 0;
+PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,3,1.8,0.05, DIRECT);
+PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,3,1.8,0.05, DIRECT);
 unsigned long t0 = 0;
 unsigned long t1 = 0;
+unsigned long tdata_0 = 0;
 
-const int row = 10;
+const int row = 20;
 
-double data_now[row*10];
-double data_ist[row*10];
-double data_stell[row*10];
+int data_s[row*10];
+int data_d[row*10];
+
 int i = 0;
 int driveState = 0;
 
 const int STOP_SPEED = 0;
 const int NORMAL_SPEED = 60;
-const int TURN_SPEED = 60;
 
 void setup()
 {
   pinMode(key,INPUT);// Set button as input
-  pinMode(beep,OUTPUT); // Set buzzer as output
 
   digitalWrite(key,HIGH);//Initialize button
-  digitalWrite(beep,HIGH);// set buzzer mute
+ 
   
   //Initialize motor drive for output mode
 //  pinMode(Left_motor_go,OUTPUT);
 //  pinMode(Left_motor_back,OUTPUT);
     pinMode(Sensor1, INPUT); 
 
-  Serial.begin(9600);
+  Serial.begin(57600, SERIAL_8N1);
   while (! Serial);
-   Serial.println("setup");
+
 //   if (!SD.begin(chipSelect)) {
 //    Serial.println("Card failed, or not present");
 //    // don't do anything more:
@@ -89,10 +94,10 @@ void setup()
    //digitalWrite(Right_motor_go,HIGH);// right motor go ahead
   //digitalWrite(Right_motor_back,LOW);  
  
-  //m1PID.SetMode(AUTOMATIC);
-  //m1PID.SetSampleTime(10);
-//  m2PID.SetMode(AUTOMATIC);
-//  m2PID.SetSampleTime(10);
+  m1PID.SetMode(AUTOMATIC);
+  m1PID.SetSampleTime(100);
+  m2PID.SetMode(AUTOMATIC);
+  m2PID.SetSampleTime(100);
 
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
@@ -102,17 +107,6 @@ void setup()
   analogWrite(Left_motor_go, 0);
 }
 
-//void resetPulseInt() {
-//  Timer1.detachInterrupt();
-//  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
-//}
-
-//void pulse() {
-//  pulseCounter++;
-//  Timer1.initialize(1 * 100);
-//  Timer1.attachInterrupt(resetPulseInt);
-//  detachInterrupt(digitalPinToInterrupt(2));
-//}
 
 void forwardM1(int myspeed) {
   digitalWrite(Right_motor_back,LOW);  
@@ -166,12 +160,12 @@ double countPulses(int sensor, unsigned long now, int& state, double& pulses) {
    //Serial.println(state);
 }
 
-void updateController(unsigned long now, double sollWert, double istWert, double kp, double ki, double kd, unsigned long& t0, double& I, double& P0, double& result) {
-  if (now >= (t0 + 100)){
+void updateController(unsigned long now, double sollWert, double istWert, double kp, double ki, double kd, unsigned long& tc0, double& I, double& P0, double& result) {
+  if (now >= (tc0 + 100)){
       double P = (sollWert - istWert);
       
-      if (abs(P) > 0.01) {
-        double dt = (now - t0)/1000.0;
+      //if (abs(P) > 0.01) {
+        double dt = (now - tc0)/1000.0;
         I = I + P * dt;
   
         if (ki > 0) {
@@ -183,27 +177,15 @@ void updateController(unsigned long now, double sollWert, double istWert, double
        
         result = min(255, max(0, (int)(result + dv)));
      
-      }
-    t0 = now;
+//      } else {
+//        Serial.println("<0.01");
+//      }
+    tc0 = now;
     P0 = P;
   }
 }
 
-
-
-unsigned long m1_pulses_0=0;
-unsigned long m2_pulses_0=0;
-
-unsigned long t_speed_0=0;
-unsigned long m1_speed=0;
-unsigned long m1_speed_0=0;
-unsigned long m2_speed=0;
-unsigned long m2_speed_0=0;
-
-const int SPEED_TIMEFRAME=200;
-
-int m1_desiredSpeed = 0;
-int m2_desiredSpeed = 0;
+bool alreadySend = false;
 
 void loop() { 
   bool m1_ready = false;
@@ -212,15 +194,8 @@ void loop() {
   unsigned long now = millis(); 
   
   countPulses(Sensor1, now, sensor1State, m1_pulses);
-    countPulses(Sensor2, now, sensor2State, m2_pulses);
-
-  updateController(now, m1_desiredSpeed, m1_speed, 0.4, 1.0, 0.01, m1_t0, m1_I, m1_P0, m1_controllVariable);
-  forwardM1(m1_controllVariable);
-
+  countPulses(Sensor2, now, sensor2State, m2_pulses);
   
-  updateController(now, m2_desiredSpeed, m2_speed, 0.4, 1.0, 0.01, m2_t0, m2_I, m2_P0, m2_controllVariable);
-  forwardM2(m2_controllVariable);
-
   if (now > t_speed_0 + SPEED_TIMEFRAME) {
     m1_speed = (m1_pulses - m1_speed_0) * 1000/SPEED_TIMEFRAME;
     m2_speed = (m2_pulses - m2_speed_0) * 1000/SPEED_TIMEFRAME;
@@ -229,62 +204,87 @@ void loop() {
     m2_speed_0 = m2_pulses;
   }
 
-  if (now > t1 + 1000) {
-    String dataString = String(now);
-    dataString += ";";
-    dataString += String(m1_desiredSpeed);
-    dataString += ";";
-    dataString += String(m1_speed);
-    dataString += ";";
-    dataString += String(m1_controllVariable);
-    dataString += ";";
-    dataString += String(m2_desiredSpeed);
-    dataString += ";";
-    dataString += String(m2_speed);
-    dataString += ";";
-    dataString += String(m2_controllVariable);
-//    File dataFile = SD.open("datalog.txt", FILE_WRITE);
-//    if (dataFile) {
-//      dataFile.println(dataString);
-//      dataFile.close();
-//    } else {
-//      Serial.println("error opening controller.csv");
-//    }
-    Serial.println(dataString);
+
+
+//  m1PID.Compute();
+//  m2PID.Compute();
+//  best 00:34 0.6, 0.75, 0.1
+  updateController(now, m1_desiredSpeed, m1_speed, 0.6, 0.75, 0.1, m1_t0, m1_I, m1_P0, m1_controllVariable);
+  forwardM1(m1_controllVariable);
+
+  
+  updateController(now, m2_desiredSpeed, m2_speed, 0.6, 0.75, 0.1, m2_t0, m2_I, m2_P0, m2_controllVariable);
+  forwardM2(0);
+
+  
+
+  if (now > t1 + 10000) {
+    if (!alreadySend) {
+      
+    
+     for (int j=0;j<row*10;j++){
+      
+      Serial.print(j);
+      Serial.print(";");
+      Serial.print(data_d[j]);
+      Serial.print(";");
+      Serial.println(data_s[j]);
+      alreadySend = true;
+      }
+    }
+      
+
+//    String dataString = String(now);
+//    dataString += ";";
+//    dataString += String(m1_desiredSpeed);
+//    dataString += ";";
+//    dataString += String(m1_speed);
+//    dataString += ";";
+//    dataString += String(m1_controllVariable);
+//    dataString += ";";
+//    dataString += String(m2_desiredSpeed);
+//    dataString += ";";
+//    dataString += String(m2_speed);
+//    dataString += ";";
+//    dataString += String(m2_controllVariable);
+//    Serial.println(dataString);
     t1 = now;
+    i=0;
   }
 
   switch(driveState) {
     case 0:
       if (digitalRead(key) == LOW) {
-        Serial.println("start!");
         t0=now;
         driveState = 1;
         m1_pulses=0;
         m2_pulses=0;
         m1_pulses_0=0;
         m2_pulses_0=0;
+        
       }
       break;
     case 1: 
       if (now > t0 + 2000) {
-        Serial.print(driveState);
-        Serial.println(": go forward");
+
+        
         m1_desiredSpeed = NORMAL_SPEED;
         m2_desiredSpeed = NORMAL_SPEED;
         t0 = now;
+        t1 = now;
         driveState = 2;
+        i=0;
       }
       break;
     case 2: 
       if (m1_pulses > m1_pulses_0 + 300) {
-        Serial.print(driveState);
-        Serial.println(": stop m1");
+        
+        
         m1_desiredSpeed = STOP_SPEED;
         driveState=3;
       } else if (m2_pulses > m2_pulses_0 + 300) {
         Serial.print(driveState);
-        Serial.println(": stop m2");
+        
         m2_desiredSpeed = STOP_SPEED;
         driveState=4;
       }
@@ -292,7 +292,7 @@ void loop() {
     case 3: 
       if (m2_pulses > m2_pulses_0 + 300) {
         Serial.print(driveState);
-        Serial.println(": stop m2");
+        
         m2_desiredSpeed = STOP_SPEED;
         driveState=0;
         m1_pulses_0 = m1_pulses;
@@ -302,7 +302,7 @@ void loop() {
     case 4: 
       if (m1_pulses > m1_pulses_0 + 300) {
         Serial.print(driveState);
-        Serial.println(": stop m1");
+        
         m1_desiredSpeed = STOP_SPEED;
         driveState=0;
         m1_pulses_0 = m1_pulses;
@@ -313,7 +313,7 @@ void loop() {
       break;      
     case 98: 
       if (digitalRead(key) == LOW) {
-          Serial.println("stop");
+          
           t0=now;
           driveState = 0;
           forwardM1(STOP_SPEED);
@@ -331,24 +331,15 @@ void loop() {
   //m1PID.Compute();
   //m2PID.Compute();
   
-//  updateController(now, sollWert, m1_currentSpeed, 0.2, 0.01, 0.05, m1_t0, m1_I, m1_P0, m1_controllVariable);
-
-
-  
-//  updateController(now, sollWert, m2_currentSpeed, 0.2, 0.01, 0.006, m2_t0, m2_I, m2_P0, m2_controllVariable);
 //  run(m1, m1_controllVariable);   
 //  run(m2, m2_controllVariable);   
    
-//   if (now > t0 + 200) {
-//        unsigned long currentCounter = pulseCounter;
-//        currentSpeed = (currentCounter - oldCounter) ;
-//        oldCounter = currentCounter;
-////      data_now[i] = now;
-////      data_ist[i] = sensor1istWertCPM;
-////      data_stell[i] = m1_controllVariable;
-//        t0 = now;
-////      i++;
-//    } 
+   if (now > tdata_0 + 50 && i < row*10) {
+      data_s[i] = m1_speed;
+      data_d[i] = m1_desiredSpeed;
+      tdata_0 = now;
+      i++;
+    } 
 
 //  if (now > t1 + 1000) {
 //    Serial.println(currentSpeed);
