@@ -53,8 +53,8 @@ double m2_P0 = 0;
 //PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,1,3,0.1, DIRECT);
 //PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,1,3,0.1, DIRECT);
 
-PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,3,1.8,0.05, DIRECT);
-PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,3,1.8,0.05, DIRECT);
+//PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,3,1.8,0.05, DIRECT);
+//PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,3,1.8,0.05, DIRECT);
 unsigned long t0 = 0;
 unsigned long t1 = 0;
 unsigned long tdata_0 = 0;
@@ -94,10 +94,10 @@ void setup()
    //digitalWrite(Right_motor_go,HIGH);// right motor go ahead
   //digitalWrite(Right_motor_back,LOW);  
  
-  m1PID.SetMode(AUTOMATIC);
-  m1PID.SetSampleTime(100);
-  m2PID.SetMode(AUTOMATIC);
-  m2PID.SetSampleTime(100);
+//  m1PID.SetMode(AUTOMATIC);
+//  m1PID.SetSampleTime(100);
+//  m2PID.SetMode(AUTOMATIC);
+//  m2PID.SetSampleTime(100);
 
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
 //  attachInterrupt(digitalPinToInterrupt(2), pulse, FALLING);
@@ -214,7 +214,7 @@ void loop() {
 
   
   updateController(now, m2_desiredSpeed, m2_speed, 0.6, 0.75, 0.1, m2_t0, m2_I, m2_P0, m2_controllVariable);
-  forwardM2(0);
+  forwardM2(m2_controllVariable);
 
   
 
@@ -277,12 +277,12 @@ void loop() {
       }
       break;
     case 2: 
-      if (m1_pulses > m1_pulses_0 + 300) {
+      if (m1_pulses > m1_pulses_0 + 200) {
         
         
         m1_desiredSpeed = STOP_SPEED;
         driveState=3;
-      } else if (m2_pulses > m2_pulses_0 + 300) {
+      } else if (m2_pulses > m2_pulses_0 + 200) {
         Serial.print(driveState);
         
         m2_desiredSpeed = STOP_SPEED;
@@ -290,7 +290,7 @@ void loop() {
       }
       break;
     case 3: 
-      if (m2_pulses > m2_pulses_0 + 300) {
+      if (m2_pulses > m2_pulses_0 + 200) {
         Serial.print(driveState);
         
         m2_desiredSpeed = STOP_SPEED;
@@ -300,7 +300,7 @@ void loop() {
       }
       break;  
     case 4: 
-      if (m1_pulses > m1_pulses_0 + 300) {
+      if (m1_pulses > m1_pulses_0 + 200) {
         Serial.print(driveState);
         
         m1_desiredSpeed = STOP_SPEED;
