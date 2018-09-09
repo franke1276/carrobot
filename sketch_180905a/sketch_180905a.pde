@@ -25,6 +25,33 @@ prevY_ist = height;
   myPort = new Serial(this, "/dev/tty.usbmodem1411", 57600, 'N', 8, 1.0);
 
   //myPort.bufferUntil('\n');
+  
+  drawStuff();
+}
+
+void drawStuff() {
+  strokeWeight(1);
+  stroke(220);
+  for (int x=0; x < 12000;x += 100) {
+    line(x/10, 0, x/10, height);
+  }
+  strokeWeight(2);
+  for (int x=0; x < 12000;x += 500) {
+    line(x/10, 0, x/10, height);
+  }
+  
+  
+  strokeWeight(1);
+  stroke(220);
+  for (int x=0; x < 12000;x += 100) {
+    line(x/10, 0, x/10, height);
+  }
+  strokeWeight(2);
+  for (int y=0; y < 120;y += 10) {
+    int y_ = (int)map(y, 0, 120.0, 0, height);
+    line(0, y_, width, y_);
+  }
+  
 }
 
 void draw() {
@@ -57,9 +84,9 @@ void draw() {
         
         
         if (time > 0) {
-          stroke(255);
+          stroke(0);
           line(x_prev, prevY_soll, x, Y_soll);
-          stroke(135);
+          stroke(204, 102, 0);
           line(x_prev, prevY_ist, x, Y_ist);
         }
         

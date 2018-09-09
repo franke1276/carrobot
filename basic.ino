@@ -1,7 +1,5 @@
 #include <SR04.h>
 
-#include <PID_v1.h>
-
 #include "TimerOne.h"
 #include <SD.h>
 
@@ -60,28 +58,21 @@ unsigned long m2_t0;
 double m2_I = 0;
 double m2_P0 = 0;
 
-//PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,1,3,0.1, DIRECT);
-//PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,1,3,0.1, DIRECT);
-
-//PID m1PID(&m1_speed, &m1_controllVariable, &m1_desiredSpeed,1.5,5.5,0.1, DIRECT);
-//PID m2PID(&m2_speed, &m2_controllVariable, &m2_desiredSpeed,1.5,5.5,0.1, DIRECT);
 unsigned long t0 = 0;
 unsigned long t1 = 0;
 unsigned long t2 = 0;
 unsigned long tdata_0 = 0;
 
 const int row = 20;
-
 int data_s[row*10];
 int data_d[row*10];
-
 int i = 0;
+
 int driveState = 0;
 
 const int STOP_SPEED = 0;
-const int M1_NORMAL_SPEED = 90;
-const int M2_NORMAL_SPEED = 98;
-
+const int M1_NORMAL_SPEED = 50;
+const int M2_NORMAL_SPEED = 50;
 
 SR04 sr04 = SR04(ECHO_PIN,TRIG_PIN);
 
@@ -100,11 +91,6 @@ void setup() {
   while (! Serial);
 
   analogWrite(Left_motor_go, 0);
-
-//  m1PID.SetMode(AUTOMATIC);
-//  m1PID.SetSampleTime(10);
-//  m2PID.SetMode(AUTOMATIC);
-//  m2PID.SetSampleTime(10);
 }
 
 
@@ -170,90 +156,113 @@ void updateController(unsigned long now, double sollWert, double istWert, double
       P0 = P;
   }
 }
-bool start = false;
+
 bool alreadySend = false;
-void loop() { 
-  bool m1_ready = false;
-  bool m2_ready = false;
-  
-  unsigned long now = millis(); 
 
-
-
-  
-  countPulses(Sensor1, now, sensor1State, m1_pulses);
-  countPulses(Sensor2, now, sensor2State, m2_pulses);
-  
-  if (now > t_speed_0 + SPEED_TIMEFRAME) {
-    m1_speed = (m1_pulses - m1_speed_0) * 1000/SPEED_TIMEFRAME;
-    m2_speed = (m2_pulses - m2_speed_0) * 1000/SPEED_TIMEFRAME;
-    t_speed_0 = now;
-    m1_speed_0 = m1_pulses;
-    m2_speed_0 = m2_pulses;
+void runEvery(unsigned long now, long runIn, unsigned long& start, void f()) {
+  if (now >= start + runIn){
+    f();
+    start = now;
   }
+}
 
+void goForward() {
+  driveState = 2;
+}
+
+void stop() {
+  driveState = 0;
+  m1_forward=true;
+  m2_forward=true;
+  m1_desiredSpeed = STOP_SPEED;
+  m2_desiredSpeed = STOP_SPEED;
+}
+
+
+void checkDistance() {  
+  long dist = sr04.Distance();
+  if (dist < 30) {
+    driveState = 4;
+//    Serial.println("blockiert! turn...");
+  }
+}
+void checkForEmergencyStop() {
   int SR = digitalRead(SensorRight_2);
   int SL = digitalRead(SensorLeft_2);
   if (SR == LOW || SL == LOW) {
-    m1_forward=true;
-    m2_forward=true;
-    m1_desiredSpeed = STOP_SPEED;
-    m2_desiredSpeed = STOP_SPEED;
-    Serial.println("emergency stop.");
-    driveState = 0;
+    stop();
+//    Serial.println("emergency stop.");
   }
+}
 
-//  m1PID.Compute();
-//  m2PID.Compute();
-//  best 00:34 0.6, 0.75, 0.1
+
+void calculateSpeed(){
+  m1_speed = (m1_pulses - m1_speed_0) * 1000/SPEED_TIMEFRAME;
+  m2_speed = (m2_pulses - m2_speed_0) * 1000/SPEED_TIMEFRAME;
+  m1_speed_0 = m1_pulses;
+  m2_speed_0 = m2_pulses;
+}
+
+void controlMotors() {
+  // best: double kp = 0.6; double ki = 0.75; double kd = 0.1;
+  double kpkrit = 1.95; 
+  double tkrit = 1.0;
+   
+  //double kp = 0.45 * kpkrit; double ki = 0.85 * tkrit; double kd = 0;
+  double kp = 0.6 * kpkrit; double ki = 0.5 * tkrit; double kd = 0.12 * tkrit;
   
-  double kp = 0.6;
-  double ki = 0.75;
-  double kd = 0.1;
-
-
+  unsigned long now = millis();
+  updateController(now, m1_desiredSpeed, m1_speed, kp, ki, kd, m1_t0, m1_I, m1_P0, m1_controllVariable);
+  driveM1(m1_forward, m1_controllVariable);
+  //driveM1(m1_forward, m1_desiredSpeed);
   
-  //updateController(now, m1_desiredSpeed, m1_speed, kp, ki, kd, m1_t0, m1_I, m1_P0, m1_controllVariable);
-  driveM1(m1_forward, m1_desiredSpeed);
+  updateController(now, m2_desiredSpeed, m2_speed, kp, ki, kd, m2_t0, m2_I, m2_P0, m2_controllVariable);
+  driveM2(m2_forward, m2_controllVariable);
+  //driveM2(m2_forward, m2_desiredSpeed);
+}
+void sendMotorTrackingData() {
+  if (!alreadySend) {
+     for (int j=0;j<row*10;j++){
+        Serial.print(j);
+        Serial.print(";");
+        Serial.print(data_d[j]);
+        Serial.print(";");
+        Serial.println(data_s[j]);
+        alreadySend = true;
+      }
+      i=0;
+   }
+    
+}
 
+void loop() { 
+  unsigned long now = millis(); 
 
-  //updateController(now, m2_desiredSpeed, m2_speed, kp, ki, kd, m2_t0, m2_I, m2_P0, m2_controllVariable);
-  driveM2(m2_forward, m2_desiredSpeed);
+  countPulses(Sensor1, now, sensor1State, m1_pulses);
+  countPulses(Sensor2, now, sensor2State, m2_pulses);
   
+  runEvery(now, SPEED_TIMEFRAME, t_speed_0, calculateSpeed);
   
+  checkForEmergencyStop();
   
+  controlMotors();
   
-
-  if (now > t1 + 10000) {
-//    if (!alreadySend) {
-//     for (int j=0;j<row*10;j++){
-//      Serial.print(j);
-//      Serial.print(";");
-//      Serial.print(data_d[j]);
-//      Serial.print(";");
-//      Serial.println(data_s[j]);
-//      alreadySend = true;
-//      }
-//    }
-
-    t1 = now;
-    i=0;
-  }
-
+  //runEvery(now, 10000, t1, sendMotorTrackingData);
+  
   switch(driveState) {
     case 0: // init state, wait for button
       if (digitalRead(key) == LOW) {
-        t0=now;
+        t0 = now;
+        t1 = now;
         driveState = 1;
         m1_pulses=0;
         m1_pulses_0=0;
+        tdata_0 = now;
+        i=0;
       }
       break;
     case 1: // wait for time to start
-      if (now > t0 + 2000) {
-        t0 = now;
-        driveState = 2;
-      }
+      runEvery(now, 1000, t0, goForward);
       break;
     case 2: // forward state
       m1_forward = true;
@@ -263,20 +272,10 @@ void loop() {
       driveState = 3;    
       t2 = now;
       break;  
-    case 3:
-      // normale fahrt gerade aus, check for distance
-      
-      if (now > t2 + 500) {
-        Serial.println("check distance");
-        long dist = sr04.Distance();
-        Serial.print("dist: ");
-        Serial.println(dist);
-        if (dist < 30) {
-          driveState = 4;
-          Serial.println("blockiert! turn...");
-        }
-        t2 = now;
-      }
+    case 3: // normale fahrt gerade aus, check for distance
+      runEvery(now, 500, t2, checkDistance);
+
+      //runEvery(now, 8000, t2, stop);
       break;
     case 4: // init turn  
       m1_forward = true;
@@ -288,13 +287,7 @@ void loop() {
       break;
     case 5:
       // wait for turn complete
-      if (m1_pulses > m1_pulses_0 + 13) {
-        m1_forward = true;
-        m2_forward = true;
-        m1_desiredSpeed = STOP_SPEED;
-        m2_desiredSpeed = STOP_SPEED;
-        driveState=2;
-      }
+      runEvery(m1_pulses, 9, m1_pulses_0, goForward);
       break;
   }   
   
@@ -303,6 +296,6 @@ void loop() {
       data_d[i] = m1_desiredSpeed;
       tdata_0 = now;
       i++;
-    } 
+  } 
 }
 
