@@ -40,11 +40,11 @@ void draw() {
         float ist = float(a[2]);
         
         
-        println(soll + "    " + ist);
+          println(soll + "    " + ist);
         //println(time + ": " +  soll + "   |   " +  ist);
         
-        soll = map(soll, 0, 100.0, 0, height );
-        ist = map(ist, 0, 100.0, 0, height);
+        soll = map(soll, 0, 120.0, 0, height );
+        ist = map(ist, 0, 120.0, 0, height);
         
         
         strokeWeight(2);
